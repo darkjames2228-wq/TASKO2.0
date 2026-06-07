@@ -4,15 +4,17 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { Task, Category, Priority } from "./types";
+import confetti from "canvas-confetti";
+import { Task, Category, Priority, User } from "./types";
 import { BackdropAnimation } from "./components/BackdropAnimation";
 import { TaskStats } from "./components/TaskStats";
 import { TaskForm } from "./components/TaskForm";
 import { TaskFilterBar, FilterType } from "./components/TaskFilterBar";
 import { TaskCard } from "./components/TaskCard";
 import { SettingsPanel, COLOR_PRESETS } from "./components/SettingsPanel";
+import { AccountAuth } from "./components/AccountAuth";
 import { motion, AnimatePresence } from "motion/react";
-import { Cloud, Wifi, WifiOff, Terminal, EyeOff, LayoutGrid } from "lucide-react";
+import { Cloud, Wifi, WifiOff, Terminal, EyeOff, LayoutGrid, Award } from "lucide-react";
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -20,6 +22,20 @@ export default function App() {
   const [submitting, setSubmitting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [showCelebration, setShowCelebration] = useState(false);
+
+  // Authentication & Identity States
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    try {
+      const saved = localStorage.getItem("tasko_user_context_v2");
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [authToken, setAuthToken] = useState<string | null>(() => {
+    return localStorage.getItem("tasko_auth_token_v2") || null;
+  });
 
   // Settings State configurations
   const [activePresetId, setActivePresetId] = useState<string>(() => {
@@ -55,7 +71,11 @@ export default function App() {
     const fetchTasks = async () => {
       try {
         setLoading(true);
-        const res = await fetch("/api/tasks");
+        const headers: HeadersInit = {};
+        if (authToken) {
+          headers["Authorization"] = `Bearer ${authToken}`;
+        }
+        const res = await fetch("/api/tasks", { headers });
         if (!res.ok) throw new Error("Could not fetch remote database tasks");
         const data = await res.json();
         if (isMounted) {
@@ -79,16 +99,20 @@ export default function App() {
     return () => {
       isMounted = false;
     };
-  }, [showToast]);
+  }, [showToast, authToken]);
 
   // Create Task Handler
   const handleAddTask = async (text: string, category: Category, priority: Priority, due: string | null) => {
     try {
       setSubmitting(true);
       setIsSyncing(true);
+      const reqHeaders: HeadersInit = { "Content-Type": "application/json" };
+      if (authToken) {
+        reqHeaders["Authorization"] = `Bearer ${authToken}`;
+      }
       const res = await fetch("/api/tasks", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: reqHeaders,
         body: JSON.stringify({ text, category, priority, due }),
       });
 
@@ -119,11 +143,26 @@ export default function App() {
       prev.map((t) => (t.id === id ? { ...t, done: nextDoneState } : t))
     );
 
+    if (nextDoneState) {
+      confetti({
+        particleCount: 150,
+        spread: 80,
+        origin: { y: 0.6 },
+        colors: ["#2dffb3", "#ff2a9d", "#0ff0ff", "#ffe600"]
+      });
+      setShowCelebration(true);
+      setTimeout(() => setShowCelebration(false), 2400);
+    }
+
     try {
       setIsSyncing(true);
+      const reqHeaders: HeadersInit = { "Content-Type": "application/json" };
+      if (authToken) {
+        reqHeaders["Authorization"] = `Bearer ${authToken}`;
+      }
       const res = await fetch(`/api/tasks/${id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: reqHeaders,
         body: JSON.stringify({ done: nextDoneState }),
       });
       if (!res.ok) throw new Error("Unsuccessful status update");
@@ -151,9 +190,13 @@ export default function App() {
 
     try {
       setIsSyncing(true);
+      const reqHeaders: HeadersInit = { "Content-Type": "application/json" };
+      if (authToken) {
+        reqHeaders["Authorization"] = `Bearer ${authToken}`;
+      }
       const res = await fetch(`/api/tasks/${id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: reqHeaders,
         body: JSON.stringify({ text }),
       });
       if (!res.ok) throw new Error("Error amending task");
@@ -176,7 +219,14 @@ export default function App() {
 
     try {
       setIsSyncing(true);
-      const res = await fetch(`/api/tasks/${id}`, { method: "DELETE" });
+      const reqHeaders: HeadersInit = {};
+      if (authToken) {
+        reqHeaders["Authorization"] = `Bearer ${authToken}`;
+      }
+      const res = await fetch(`/api/tasks/${id}`, { 
+        method: "DELETE",
+        headers: reqHeaders
+      });
       if (!res.ok) throw new Error("Could not erase remote document");
       showToast("Erase completed successfully.");
       setSyncError(null);
@@ -197,7 +247,14 @@ export default function App() {
 
     try {
       setIsSyncing(true);
-      const res = await fetch("/api/tasks/clear-completed", { method: "POST" });
+      const reqHeaders: HeadersInit = {};
+      if (authToken) {
+        reqHeaders["Authorization"] = `Bearer ${authToken}`;
+      }
+      const res = await fetch("/api/tasks/clear-completed", { 
+        method: "POST", 
+        headers: reqHeaders 
+      });
       if (!res.ok) throw new Error("Error purging database done");
       const result = await res.json();
       showToast(`Purged ${result.clearedCount || 0} finished targets.`);
@@ -243,9 +300,13 @@ export default function App() {
     // Save ordering coordinates to database
     try {
       setIsSyncing(true);
+      const reqHeaders: HeadersInit = { "Content-Type": "application/json" };
+      if (authToken) {
+        reqHeaders["Authorization"] = `Bearer ${authToken}`;
+      }
       const res = await fetch("/api/tasks/reorder", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: reqHeaders,
         body: JSON.stringify({ orderedIds: newlyOrderedTasks.map((t) => t.id) }),
       });
       if (!res.ok) throw new Error("Unsuccessful DB reindexing order sync");
@@ -287,15 +348,22 @@ export default function App() {
   };
 
   const handleClearAll = async () => {
-    const confirm = window.confirm("⚠️ ATTENTION: Are you sure you want to permanently erase all records from the server storage database?");
+    const confirm = window.confirm("⚠️ ATTENTION: Are you sure you want to permanently erase your active files from the server?");
     if (!confirm) return;
 
     try {
       setIsSyncing(true);
-      const res = await fetch("/api/tasks/clear-all", { method: "POST" });
+      const reqHeaders: HeadersInit = {};
+      if (authToken) {
+        reqHeaders["Authorization"] = `Bearer ${authToken}`;
+      }
+      const res = await fetch("/api/tasks/clear-all", { 
+        method: "POST",
+        headers: reqHeaders
+      });
       if (!res.ok) throw new Error("Could not wipe DB tasks on server");
       setTasks([]);
-      showToast("💀 Database wiped entirely. Ready for new operations.");
+      showToast("💀 Tasks cleared. Ready retrospectively.");
       setSyncError(null);
     } catch (err) {
       console.error(err);
@@ -308,7 +376,14 @@ export default function App() {
   const handleLoadDemo = async () => {
     try {
       setIsSyncing(true);
-      const res = await fetch("/api/tasks/seed-demo", { method: "POST" });
+      const reqHeaders: HeadersInit = {};
+      if (authToken) {
+        reqHeaders["Authorization"] = `Bearer ${authToken}`;
+      }
+      const res = await fetch("/api/tasks/seed-demo", { 
+        method: "POST",
+        headers: reqHeaders
+      });
       if (!res.ok) throw new Error("Could not seed workspace DB");
       const result = await res.json();
       setTasks(result.tasks);
@@ -319,6 +394,75 @@ export default function App() {
       showToast("⚠️ Could not fetch software preset files.");
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  // ─── Backup and Local JSON Export ────────────────────────────────
+  const handleDownloadBackup = useCallback(() => {
+    try {
+      const jsonString = JSON.stringify(tasks, null, 2);
+      const blob = new Blob([jsonString], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      
+      const link = document.createElement("a");
+      const userLabel = currentUser ? currentUser.username : "anonymous";
+      const dateLabel = new Date().toISOString().split("T")[0];
+      
+      link.href = url;
+      link.download = `tasko_backup_${userLabel}_${dateLabel}.json`;
+      document.body.appendChild(link);
+      link.click();
+      
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showToast("✓ Offline JSON task archive downloaded successfully!");
+    } catch (err) {
+      console.error("Backup download error:", err);
+      showToast("⚠️ Failed to generate local JSON file.");
+    }
+  }, [tasks, currentUser, showToast]);
+
+  // ─── Authentication Success, Logout, and Migration handlers ───
+  const handleLoginSuccess = async (user: User, token: string) => {
+    setCurrentUser(user);
+    setAuthToken(token);
+    localStorage.setItem("tasko_user_context_v2", JSON.stringify(user));
+    localStorage.setItem("tasko_auth_token_v2", token);
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setAuthToken(null);
+    localStorage.removeItem("tasko_user_context_v2");
+    localStorage.removeItem("tasko_auth_token_v2");
+    setTasks([]); // Clean view queue
+  };
+
+  const handleMigrateLocalTasks = async () => {
+    if (!currentUser || !authToken || tasks.length === 0) return;
+    try {
+      const headers: HeadersInit = { "Content-Type": "application/json" };
+      headers["Authorization"] = `Bearer ${authToken}`;
+      
+      const res = await fetch("/api/tasks/migrate", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ localTasks: tasks }),
+      });
+      
+      if (!res.ok) throw new Error("Tasks migration failed");
+      const result = await res.json();
+      showToast(`✨ Synchronised ${result.migratedCount || 0} offline files onto account!`);
+      
+      // Load migrated tasks
+      const freshRes = await fetch("/api/tasks", { headers });
+      if (freshRes.ok) {
+        const freshData = await freshRes.json();
+        setTasks(freshData);
+      }
+    } catch (err) {
+      console.error(err);
+      showToast("⚠️ Could not synchronise local session tasks.");
     }
   };
 
@@ -334,19 +478,29 @@ export default function App() {
 
     const todayStr = new Date().toISOString().split("T")[0];
 
-    // Status Tab Filters
+    // Main status filtering
     switch (currentFilter) {
       case "active":
-        return result.filter((t) => !t.done);
+        result = result.filter((t) => !t.done);
+        break;
       case "done":
-        return result.filter((t) => t.done);
+        result = result.filter((t) => t.done);
+        break;
       case "high":
-        return result.filter((t) => t.priority === Priority.HIGH && !t.done);
+        result = result.filter((t) => t.priority === Priority.HIGH && !t.done);
+        break;
       case "today":
-        return result.filter((t) => t.due === todayStr && !t.done);
+        result = result.filter((t) => t.due === todayStr && !t.done);
+        break;
       default:
-        return result;
+        break;
     }
+
+    // Sort to push completed tasks to the bottom, while maintaining relative order
+    return result.sort((a, b) => {
+      if (a.done === b.done) return 0;
+      return a.done ? 1 : -1;
+    });
   }, [tasks, currentFilter, searchQuery]);
 
   const hasCompleted = useMemo(() => tasks.some((t) => t.done), [tasks]);
@@ -395,7 +549,7 @@ export default function App() {
 
           <div className="flex flex-col items-end text-right font-mono text-[10px] text-brand-muted">
             <span className="text-brand-cyan truncate max-w-[150px] sm:max-w-xs block overflow-hidden">
-              james2228@tasko
+              {currentUser ? `${currentUser.username}@tasko` : "anonymous@tasko"}
             </span>
             <div className="flex items-center gap-1 mt-0.5">
               {isSyncing ? (
@@ -408,6 +562,16 @@ export default function App() {
           </div>
         </header>
 
+        {/* Account Administration Identity Portal */}
+        <AccountAuth
+          currentUser={currentUser}
+          onLoginSuccess={handleLoginSuccess}
+          onLogout={handleLogout}
+          currentLocalTasks={currentUser ? [] : tasks}
+          onMigrateLocalTasks={handleMigrateLocalTasks}
+          showToast={showToast}
+        />
+
         {/* System Settings Configurations collapsible card */}
         <SettingsPanel
           activePresetId={activePresetId}
@@ -419,13 +583,14 @@ export default function App() {
           onClearAll={handleClearAll}
           onLoadDemo={handleLoadDemo}
           tasksCount={tasks.length}
+          onDownloadBackup={handleDownloadBackup}
         />
 
         {/* Dynamic Metric Charts Panel */}
         <TaskStats tasks={tasks} />
 
         {/* Input Registration Form */}
-        <TaskForm onAddTask={handleAddTask} isSubmitting={submitting} />
+        <TaskForm onAddTask={handleAddTask} isSubmitting={submitting} showToast={showToast} />
 
         {/* Filters Controls and Text Search Match */}
         <TaskFilterBar
@@ -513,6 +678,39 @@ export default function App() {
           >
             <div className="h-1.5 w-1.5 rounded-full bg-brand-neon animate-pulse" />
             <span>{toastMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Task Completion Celebration Logo Overlay */}
+      <AnimatePresence>
+        {showCelebration && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.5, rotate: -15 }}
+            animate={{ opacity: 1, scale: 1, rotate: 0 }}
+            exit={{ opacity: 0, scale: 1.2, filter: "blur(10px)" }}
+            transition={{ type: "spring", stiffness: 200, damping: 15 }}
+            className="fixed inset-0 pointer-events-none z-[100] flex items-center justify-center"
+          >
+            <div className="relative">
+              <div className="absolute inset-0 bg-brand-neon/20 blur-3xl rounded-full" />
+              <div className="bg-brand-dark-surface/80 p-8 rounded-[2rem] border border-brand-border/50 backdrop-blur-md shadow-2xl flex flex-col items-center gap-3">
+                <motion.div
+                  animate={{ y: [0, -10, 0] }}
+                  transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+                >
+                  <Award className="h-20 w-20 text-brand-neon" />
+                </motion.div>
+                <div className="text-center">
+                  <h3 className="text-xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-r from-brand-neon to-brand-cyan">
+                    Task Accomplished!
+                  </h3>
+                  <p className="text-xs font-mono tracking-widest uppercase text-brand-muted mt-1">
+                    System metrics improved
+                  </p>
+                </div>
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

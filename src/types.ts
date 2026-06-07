@@ -20,6 +20,7 @@ export enum Category {
 
 export interface Task {
   id: string;
+  userId?: string;     // associated authenticated account ID
   text: string;
   done: boolean;
   category: Category;
@@ -27,6 +28,11 @@ export interface Task {
   due: string | null; // ISO string YYYY-MM-DD or null
   created: number;    // timestamp
   order: number;      // order index for manual drag-and-drop
+}
+
+export interface User {
+  id: string;
+  username: string;
 }
 
 export interface TaskStateSummary {

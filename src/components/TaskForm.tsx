@@ -1,18 +1,51 @@
 import React, { useState } from "react";
 import { Category, Priority, Task } from "../types";
-import { Plus, Clock, Tag, Zap } from "lucide-react";
+import { Plus, Clock, Tag, Zap, Sparkles } from "lucide-react";
 
 interface TaskFormProps {
   onAddTask: (text: string, category: Category, priority: Priority, due: string | null) => Promise<void>;
   isSubmitting: boolean;
+  showToast?: (message: string) => void;
 }
 
-export function TaskForm({ onAddTask, isSubmitting }: TaskFormProps) {
+export function TaskForm({ onAddTask, isSubmitting, showToast }: TaskFormProps) {
   const [text, setText] = useState("");
   const [category, setCategory] = useState<Category>(Category.GENERAL);
   const [priority, setPriority] = useState<Priority>(Priority.MEDIUM);
   const [due, setDue] = useState<string>("");
   const [showOptions, setShowOptions] = useState(false);
+  const [isAiCategorizing, setIsAiCategorizing] = useState(false);
+
+  const handleAiCategorize = async () => {
+    if (!text.trim() || isAiCategorizing) return;
+    try {
+      setIsAiCategorizing(true);
+      const res = await fetch("/api/tasks/categorize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to auto-categorize");
+      }
+      
+      if (data.category && Object.values(Category).includes(data.category)) {
+        setCategory(data.category as Category);
+      }
+      if (data.priority && Object.values(Priority).includes(data.priority)) {
+        setPriority(data.priority as Priority);
+      }
+      setShowOptions(true);
+      if (showToast) showToast(`✨ AI detected: ${data.priority} priority in ${data.category}`);
+    } catch (err: any) {
+      console.error(err);
+      if (showToast) showToast(`⚠️ ${err.message}`);
+    } finally {
+      setIsAiCategorizing(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,11 +63,11 @@ export function TaskForm({ onAddTask, isSubmitting }: TaskFormProps) {
     <form id="task-addition-form" onSubmit={handleSubmit} className="w-full max-w-2xl mx-auto mb-6">
       <div className="bg-brand-dark-surface/80 border border-brand-border backdrop-blur-md rounded-2xl p-4 shadow-md">
         {/* Main Row */}
-        <div className="flex gap-2.5 items-stretch">
+        <div className="flex gap-2.5 items-stretch relative">
           <input
             id="task-title-input"
             type="text"
-            className="flex-1 bg-brand-dark/95 border border-brand-border focus:border-brand-neon focus:ring-1 focus:ring-brand-neon/20 rounded-xl px-4 py-3.5 text-sm md:text-base text-gray-100 placeholder-brand-muted outline-none transition-all duration-200"
+            className="flex-1 bg-brand-dark/95 border border-brand-border focus:border-brand-neon focus:ring-1 focus:ring-brand-neon/20 rounded-xl px-4 py-3.5 pr-14 text-sm md:text-base text-gray-100 placeholder-brand-muted outline-none transition-all duration-200"
             placeholder="Add new task... or toggle parameters below"
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -42,11 +75,22 @@ export function TaskForm({ onAddTask, isSubmitting }: TaskFormProps) {
             required
             autoComplete="off"
           />
+          {text.trim() && (
+            <button
+              type="button"
+              onClick={handleAiCategorize}
+              disabled={isAiCategorizing}
+              className="absolute right-[130px] sm:right-[150px] top-1/2 -translate-y-1/2 text-brand-neon hover:text-white p-2 disabled:opacity-50 transition-colors"
+              title="Auto-Categorize with AI"
+            >
+              <Sparkles className={`h-5 w-5 ${isAiCategorizing ? 'animate-pulse' : ''}`} />
+            </button>
+          )}
           <button
             id="task-submit-button"
             type="submit"
-            disabled={isSubmitting || !text.trim()}
-            className="bg-brand-neon hover:bg-[#ebff5c] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed text-brand-dark font-display font-bold px-5 rounded-xl flex items-center justify-center gap-1.5 transition-all duration-200 shadow-md shadow-brand-neon/10"
+            disabled={isSubmitting || !text.trim() || isAiCategorizing}
+            className="bg-brand-neon hover:bg-[#ebff5c] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed text-brand-dark font-display font-bold px-5 rounded-xl flex items-center justify-center gap-1.5 transition-all duration-200 shadow-md shadow-brand-neon/10 z-10"
           >
             {isSubmitting ? (
               <span className="h-4 w-4 border-2 border-brand-dark border-t-transparent rounded-full animate-spin" />

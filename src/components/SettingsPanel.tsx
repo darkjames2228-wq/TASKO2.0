@@ -1,5 +1,5 @@
 import React from "react";
-import { Settings, RefreshCw, Trash2, Sliders, Volume2, Sparkles, AlertCircle } from "lucide-react";
+import { Settings, RefreshCw, Trash2, Sliders, Volume2, Sparkles, AlertCircle, Download } from "lucide-react";
 
 export interface ColorPreset {
   id: string;
@@ -57,6 +57,7 @@ interface SettingsPanelProps {
   onClearAll: () => Promise<void>;
   onLoadDemo: () => Promise<void>;
   tasksCount: number;
+  onDownloadBackup: () => void;
 }
 
 export function SettingsPanel({
@@ -69,6 +70,7 @@ export function SettingsPanel({
   onClearAll,
   onLoadDemo,
   tasksCount,
+  onDownloadBackup,
 }: SettingsPanelProps) {
   const [isOpen, setIsOpen] = React.useState(false);
 
@@ -187,6 +189,18 @@ export function SettingsPanel({
               </div>
 
               <div className="flex gap-2 flex-wrap justify-end">
+                {/* Download Backup JSON */}
+                <button
+                  type="button"
+                  onClick={onDownloadBackup}
+                  id="backup-export-action-btn"
+                  className="bg-brand-neon/5 hover:bg-brand-neon/10 border border-brand-neon/15 hover:border-brand-neon/40 text-brand-neon text-xs font-mono font-medium px-3.5 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer transition-all active:scale-[0.98]"
+                  title="Download and backup your tasks locally as JSON"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Download Backup</span>
+                </button>
+
                 {/* Seed Real Workspace Demo */}
                 <button
                   onClick={onLoadDemo}
