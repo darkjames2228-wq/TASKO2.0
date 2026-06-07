@@ -1,0 +1,6 @@
+{
+  "name": "Tasko",
+  "description": "A dark, highly polished Task OS dashboard with category filtration, priority sorting, statistics charts, drag-and-drop reordering, and backend persistence.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
